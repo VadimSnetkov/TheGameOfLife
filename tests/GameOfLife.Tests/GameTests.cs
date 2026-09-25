@@ -47,7 +47,7 @@ namespace GameOfLife.Tests
 
             var game = new Game(board);
 
-            game.Advance();
+            game.CalculateNextGeneration();
 
             Assert.Equal(expectedAlive, game.CurrentBoard.IsAlive(1, 1));
         }
@@ -62,11 +62,11 @@ namespace GameOfLife.Tests
 
             var game = new Game(board);
 
-            game.Advance();
+            game.CalculateNextGeneration();
 
             AssertLivingCells(game.CurrentBoard, (1, 2), (2, 2), (3, 2));
 
-            game.Advance();
+            game.CalculateNextGeneration();
 
             AssertLivingCells(game.CurrentBoard, (2, 1), (2, 2), (2, 3));
         }
@@ -81,13 +81,13 @@ namespace GameOfLife.Tests
 
             var game = new Game(board);
 
-            game.Advance();
+            game.CalculateNextGeneration();
 
             AssertLivingCells(
                 game.CurrentBoard,
                 (0, 0), (0, 1), (1, 0), (1, 1));
 
-            game.Advance();
+            game.CalculateNextGeneration();
 
             AssertLivingCells(
                 game.CurrentBoard,

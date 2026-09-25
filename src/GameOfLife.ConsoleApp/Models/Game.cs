@@ -10,7 +10,7 @@ namespace GameOfLife.ConsoleApp.Models
             CurrentBoard = initialBoard;
         }
 
-        public void Advance()
+        public void CalculateNextGeneration()
         {
             var nextBoard = new Board(
                 CurrentBoard.Rows,
@@ -31,6 +31,7 @@ namespace GameOfLife.ConsoleApp.Models
 
             CurrentBoard = nextBoard;
         }
+        //Calculates and replaces the board using Conway’s rules
 
         private int CountLivingNeighbours(int row, int column)
         {
@@ -67,5 +68,6 @@ namespace GameOfLife.ConsoleApp.Models
 
             return count;
         }
+        //Counts living neighbouring cells within the board boundaries
     }
 }

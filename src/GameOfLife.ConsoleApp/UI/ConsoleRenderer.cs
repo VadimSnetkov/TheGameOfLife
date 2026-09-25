@@ -26,5 +26,6 @@ namespace GameOfLife.ConsoleApp.UI
             Console.Clear();
             Console.Write(output.ToString());
         }
+        // Displays the board in the console.
     }
 }

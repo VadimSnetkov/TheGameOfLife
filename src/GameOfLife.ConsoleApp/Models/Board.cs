@@ -27,12 +27,14 @@ namespace GameOfLife.ConsoleApp.Models
             ValidateCoordinates(row, column);
             return _cells[row, column];
         }
+        // Returns whether the specified cell is alive
 
         public void SetCell(int row, int column, bool isAlive)
         {
             ValidateCoordinates(row, column);
             _cells[row, column] = isAlive;
         }
+        // Updates the specified cell after validating its coordinates.
 
         private void ValidateCoordinates(int row, int column)
         {
@@ -45,5 +47,6 @@ namespace GameOfLife.ConsoleApp.Models
                 throw new ArgumentOutOfRangeException(nameof(column), "Column is out of bounds.");
             }
         }
+        //Rejects coordinates outside the board.
     }
 }

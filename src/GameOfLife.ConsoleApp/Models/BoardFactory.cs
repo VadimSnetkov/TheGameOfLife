@@ -19,5 +19,6 @@ namespace GameOfLife.ConsoleApp.Models
 
             return board;
         }
+        // Creates a board with randomly populated cells
     }
 }
