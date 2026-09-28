@@ -1,9 +1,18 @@
-﻿namespace GameOfLife.ConsoleApp;
+using GameOfLife.ConsoleApp.Models;
+using GameOfLife.ConsoleApp.UI;
 
-class Program
+namespace GameOfLife.ConsoleApp
 {
-    static void Main(string[] args)
+    internal class Program
     {
-        Console.WriteLine("Hello, World!");
+        static async Task Main()
+        {
+            var renderer = new ConsoleRenderer();
+            var boardFactory = new BoardFactory();
+
+            var application = new ConsoleApplication(renderer, boardFactory);
+            await application.RunAsync();
+        }
+        //Creates the application dependencies and starts the console application.
     }
 }
