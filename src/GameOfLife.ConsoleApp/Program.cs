@@ -28,5 +28,6 @@ namespace GameOfLife.ConsoleApp
 
             await application.RunAsync();
         }
+        //Creates the application dependencies and starts the console application.
     }
 }

@@ -8,7 +8,7 @@ namespace GameOfLife.ConsoleApp.Models
         public int Columns { get; }
 
         /// Summary:
-        /// Creates an empty board with positive dimensions.
+        /// Constructor creates an empty board with positive dimensions.
         public Board(int rows, int columns)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);

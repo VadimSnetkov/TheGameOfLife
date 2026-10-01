@@ -4,6 +4,9 @@ namespace GameOfLife.ConsoleApp.Service
 {
     public class GameService
     {
+        private const int NeighboursRequiredForBirth = 3;
+        private const int MinimumNeighboursForSurvival = 2;
+        private const int MaximumNeighboursForSurvival = 3;
         private readonly BoardService _boardService;
 
         /// Summary:
@@ -27,7 +30,10 @@ namespace GameOfLife.ConsoleApp.Service
                 {
                     int neighbours = CountLivingNeighbours(currentBoard, row, column);
                     bool isAlive = _boardService.IsAlive(currentBoard, row, column);
-                    bool willBeAlive = neighbours == 3 || (isAlive && neighbours == 2);
+                    bool willBeAlive = isAlive
+                        ? neighbours >= MinimumNeighboursForSurvival
+                            && neighbours <= MaximumNeighboursForSurvival
+                        : neighbours == NeighboursRequiredForBirth;
 
                     _boardService.SetCell(nextBoard, row, column, willBeAlive);
                 }
