@@ -1,10 +1,15 @@
 using GameOfLife.ConsoleApp.Models;
+using GameOfLife.ConsoleApp.Service;
 using Xunit;
 
 namespace GameOfLife.Tests
 {
     public class GameTests
     {
+        private readonly BoardService _boardService = new();
+
+        /// Summary:
+        /// Checks all eighteen combinations of cell state and living-neighbour count.
         [Theory]
         [InlineData(false, 0, false)]
         [InlineData(false, 1, false)]
@@ -24,13 +29,14 @@ namespace GameOfLife.Tests
         [InlineData(true, 6, false)]
         [InlineData(true, 7, false)]
         [InlineData(true, 8, false)]
-        public void Advance_AppliesRulesToCenterCell(
+        public void Test_CalculateNextGeneration_AppliesRulesToCenterCell(
             bool initiallyAlive,
             int livingNeighbours,
             bool expectedAlive)
         {
+            // Arrange
             var board = new Board(3, 3);
-            board.SetCell(1, 1, initiallyAlive);
+            _boardService.SetCell(board, 1, 1, initiallyAlive);
 
             var neighbours = new (int Row, int Column)[]
             {
@@ -42,59 +48,77 @@ namespace GameOfLife.Tests
             for (int index = 0; index < livingNeighbours; index++)
             {
                 var neighbour = neighbours[index];
-                board.SetCell(neighbour.Row, neighbour.Column, true);
+                _boardService.SetCell(board, neighbour.Row, neighbour.Column, true);
             }
 
-            var game = new Game(board);
+            var game = new GameService(_boardService);
 
-            game.Advance();
+            // Act
+            board = game.NextIterationStep(board);
 
-            Assert.Equal(expectedAlive, game.CurrentBoard.IsAlive(1, 1));
+            // Assert
+            Assert.Equal(expectedAlive, _boardService.IsAlive(board, 1, 1));
         }
 
+        /// Summary:
+        /// Checks that a blinker oscillates and returns to its initial state.
         [Fact]
-        public void Advance_BlinkerReturnsAfterTwoGenerations()
+        public void Test_CalculateNextGeneration_BlinkerReturnsAfterTwoGenerations()
         {
+            // Arrange
             var board = new Board(5, 5);
-            board.SetCell(2, 1, true);
-            board.SetCell(2, 2, true);
-            board.SetCell(2, 3, true);
+            _boardService.SetCell(board, 2, 1, true);
+            _boardService.SetCell(board, 2, 2, true);
+            _boardService.SetCell(board, 2, 3, true);
 
-            var game = new Game(board);
+            var game = new GameService(_boardService);
 
-            game.Advance();
+            // Act
+            board = game.NextIterationStep(board);
 
-            AssertLivingCells(game.CurrentBoard, (1, 2), (2, 2), (3, 2));
+            // Assert
+            AssertLivingCells(board, (1, 2), (2, 2), (3, 2));
 
-            game.Advance();
+            // Act
+            board = game.NextIterationStep(board);
 
-            AssertLivingCells(game.CurrentBoard, (2, 1), (2, 2), (2, 3));
+            // Assert
+            AssertLivingCells(board, (2, 1), (2, 2), (2, 3));
         }
 
+        /// Summary:
+        /// Checks finite boundaries on a rectangular board and stable-block survival.
         [Fact]
-        public void Advance_CornerCellsFormStableBlockWithoutWrapping()
+        public void Test_CalculateNextGeneration_CornerCellsFormStableBlockWithoutWrapping()
         {
+            // Arrange
             var board = new Board(3, 5);
-            board.SetCell(0, 0, true);
-            board.SetCell(0, 1, true);
-            board.SetCell(1, 0, true);
+            _boardService.SetCell(board, 0, 0, true);
+            _boardService.SetCell(board, 0, 1, true);
+            _boardService.SetCell(board, 1, 0, true);
 
-            var game = new Game(board);
+            var game = new GameService(_boardService);
 
-            game.Advance();
+            // Act
+            board = game.NextIterationStep(board);
 
+            // Assert
             AssertLivingCells(
-                game.CurrentBoard,
+                board,
                 (0, 0), (0, 1), (1, 0), (1, 1));
 
-            game.Advance();
+            // Act
+            board = game.NextIterationStep(board);
 
+            // Assert
             AssertLivingCells(
-                game.CurrentBoard,
+                board,
                 (0, 0), (0, 1), (1, 0), (1, 1));
         }
 
-        private static void AssertLivingCells(
+        /// Summary:
+        /// Checks every board cell against the expected living coordinates.
+        private void AssertLivingCells(
             Board board,
             params (int Row, int Column)[] expectedCells)
         {
@@ -106,7 +130,7 @@ namespace GameOfLife.Tests
                 {
                     Assert.Equal(
                         expected.Contains((row, column)),
-                        board.IsAlive(row, column));
+                        _boardService.IsAlive(board, row, column));
                 }
             }
         }
