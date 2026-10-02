@@ -62,6 +62,7 @@ namespace GameOfLife.ConsoleApp.UI
                 Console.WriteLine($"{(int)MenuChoice.Small}. Small  - {SmallBoard.Rows} x {SmallBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Medium}. Medium - {MediumBoard.Rows} x {MediumBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Large}. Large  - {LargeBoard.Rows} x {LargeBoard.Columns}");
+                Console.WriteLine($"{(int)MenuChoice.Custom}. Custom size");
                 Console.WriteLine($"{(int)MenuChoice.Exit}. Exit");
                 Console.Write("Your choice: ");
 
@@ -94,6 +95,11 @@ namespace GameOfLife.ConsoleApp.UI
                     return null;
                 }
 
+                if (request.Choice == MenuChoice.Custom)
+                {
+                    return SelectCustomBoard();
+                }
+
                 BoardRequest boardRequest = request.Choice switch
                 {
                     MenuChoice.Small => SmallBoard,
@@ -103,6 +109,48 @@ namespace GameOfLife.ConsoleApp.UI
                 };
 
                 return _boardFactory.CreateRandom(boardRequest);
+            }
+        }
+
+        /// Summary:
+        /// Reads custom dimensions and retries invalid input until a board is created or input ends.
+        private Board? SelectCustomBoard()
+        {
+            while (true)
+            {
+                Console.Write("Rows: ");
+                string? rowsInput = Console.ReadLine();
+                if (rowsInput is null)
+                {
+                    return null;
+                }
+
+                Console.Write("Columns: ");
+                string? columnsInput = Console.ReadLine();
+                if (columnsInput is null)
+                {
+                    return null;
+                }
+
+                if (!int.TryParse(rowsInput, out int rows) ||
+                    !int.TryParse(columnsInput, out int columns))
+                {
+                    Console.WriteLine("Enter whole numbers for rows and columns.");
+                    continue;
+                }
+
+                var request = new BoardRequest { Rows = rows, Columns = columns };
+                try
+                {
+                    return _boardFactory.CreateRandom(request);
+                }
+                catch (ValidationException exception)
+                {
+                    foreach (var error in exception.Errors)
+                    {
+                        Console.WriteLine(error.ErrorMessage);
+                    }
+                }
             }
         }
     }

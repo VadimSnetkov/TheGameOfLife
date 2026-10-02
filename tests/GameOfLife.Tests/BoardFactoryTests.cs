@@ -34,34 +34,41 @@ namespace GameOfLife.Tests
 
         /// Summary:
         /// Checks that the factory runs FluentValidation before allocating the board.
-        [Fact]
-        public void Test_CreateRandom_RejectsInvalidRequest()
+        [Theory]
+        [InlineData(0, 5)]
+        [InlineData(-1, 5)]
+        [InlineData(3, 0)]
+        [InlineData(3, -1)]
+        [InlineData(101, 5)]
+        [InlineData(3, 201)]
+        public void Test_CreateRandom_RejectsInvalidRequest(int rows, int columns)
         {
             // Arrange
             var factory = new BoardFactory(new BoardRequestValidator(), new Random(1), _boardService);
-            var request = new BoardRequest { Rows = 0, Columns = 5 };
+            var request = new BoardRequest { Rows = rows, Columns = columns };
 
             // Act and assert
             Assert.Throws<ValidationException>(() => factory.CreateRandom(request));
         }
 
-        private sealed class SequenceRandom : Random
+        /// Summary:
+        /// Checks custom rectangular sizes and the accepted dimension boundaries.
+        [Theory]
+        [InlineData(1, 1)]
+        [InlineData(7, 13)]
+        [InlineData(100, 200)]
+        public void Test_CreateRandom_AcceptsCustomDimensions(int rows, int columns)
         {
-            private readonly Queue<double> _values;
+            // Arrange
+            var factory = new BoardFactory(new BoardRequestValidator(), new Random(1), _boardService);
+            var request = new BoardRequest { Rows = rows, Columns = columns };
 
-            /// Summary:
-            /// Supplies a fixed sequence so the test does not depend on chance.
-            public SequenceRandom(params double[] values)
-            {
-                _values = new Queue<double>(values);
-            }
+            // Act
+            Board board = factory.CreateRandom(request);
 
-            /// Summary:
-            /// Returns the next predefined random value.
-            public override double NextDouble()
-            {
-                return _values.Dequeue();
-            }
+            // Assert
+            Assert.Equal(rows, board.Rows);
+            Assert.Equal(columns, board.Columns);
         }
     }
 }

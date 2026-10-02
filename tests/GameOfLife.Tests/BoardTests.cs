@@ -19,13 +19,9 @@ namespace GameOfLife.Tests
             // Assert
             Assert.Equal(3, board.Rows);
             Assert.Equal(5, board.Columns);
-            for (int row = 0; row < board.Rows; row++)
-            {
-                for (int column = 0; column < board.Columns; column++)
-                {
-                    Assert.False(_boardService.IsAlive(board, row, column));
-                }
-            }
+            Assert.All(Enumerable.Range(0, board.Rows), row =>
+                Assert.All(Enumerable.Range(0, board.Columns), column =>
+                    Assert.False(_boardService.IsAlive(board, row, column))));
         }
 
         /// Summary:
