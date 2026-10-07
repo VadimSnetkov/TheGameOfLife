@@ -1,93 +1,157 @@
+using FluentValidation;
 using GameOfLife.ConsoleApp.Models;
+using GameOfLife.ConsoleApp.Service;
 
 namespace GameOfLife.ConsoleApp.UI
 {
     public class ConsoleApplication
     {
+        private static readonly BoardRequest SmallBoard = new() { Rows = 10, Columns = 20 };
+        private static readonly BoardRequest MediumBoard = new() { Rows = 15, Columns = 30 };
+        private static readonly BoardRequest LargeBoard = new() { Rows = 20, Columns = 40 };
+
         private readonly ConsoleRenderer _renderer;
         private readonly BoardFactory _boardFactory;
-        private const string ExitChoice = "0";
-        private const string SmallBoardChoice = "1";
-        private const string MediumBoardChoice = "2";
-        private const string LargeBoardChoice = "3";
+        private readonly GameService _gameService;
+        private readonly IValidator<MenuRequest> _menuValidator;
 
-        public ConsoleApplication(
-            ConsoleRenderer renderer,
-            BoardFactory boardFactory)
+        /// Summary:
+        /// Receives the renderer, board factory, menu validator, and generation service.
+        public ConsoleApplication(ConsoleRenderer renderer, BoardFactory boardFactory,
+            IValidator<MenuRequest> menuValidator, GameService gameService)
         {
             ArgumentNullException.ThrowIfNull(renderer);
             ArgumentNullException.ThrowIfNull(boardFactory);
+            ArgumentNullException.ThrowIfNull(menuValidator);
+            ArgumentNullException.ThrowIfNull(gameService);
 
             _renderer = renderer;
             _boardFactory = boardFactory;
+            _menuValidator = menuValidator;
+            _gameService = gameService;
         }
 
+        /// Summary:
+        /// Displays the selected board and calculates its next generation on each one-second tick.
         public async Task RunAsync()
         {
-            //result can be a board or null, so we need to handle the case where the user chooses to exit
             Board? board = SelectBoard();
-
             if (board is null)
             {
                 return;
             }
 
-            var game = new Game(board);
+            _renderer.Render(board);
 
-            _renderer.Render(game.CurrentBoard);
-
-            while (true)
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync())
             {
-                await Task.Delay(TimeSpan.FromSeconds(0.2));
-
-                game.CalculateNextGeneration();
-                _renderer.Render(game.CurrentBoard);
+                board = _gameService.NextIterationStep(board);
+                _renderer.Render(board);
             }
         }
-        //Starts the selected game and updates it approximately every second.
 
+        /// Summary:
+        /// Validates menu input and creates the selected board, or returns null when exiting.
         private Board? SelectBoard()
         {
             while (true)
             {
-                Console.WriteLine("Conway's Game of Life");
+                Console.WriteLine("TheGameOfLife");
                 Console.WriteLine("Choose a field size (rows x columns):");
-                Console.WriteLine($"{SmallBoardChoice}. Small  - 10 x 20");
-                Console.WriteLine($"{MediumBoardChoice}. Medium - 15 x 30");
-                Console.WriteLine($"{LargeBoardChoice}. Large  - 20 x 40");
-                Console.WriteLine($"{ExitChoice}. Exit");
+                Console.WriteLine($"{(int)MenuChoice.Small}. Small  - {SmallBoard.Rows} x {SmallBoard.Columns}");
+                Console.WriteLine($"{(int)MenuChoice.Medium}. Medium - {MediumBoard.Rows} x {MediumBoard.Columns}");
+                Console.WriteLine($"{(int)MenuChoice.Large}. Large  - {LargeBoard.Rows} x {LargeBoard.Columns}");
+                Console.WriteLine($"{(int)MenuChoice.Custom}. Custom size");
+                Console.WriteLine($"{(int)MenuChoice.Exit}. Exit");
                 Console.Write("Your choice: ");
 
-                string? choice = Console.ReadLine();
-
-                switch (choice?.Trim())
+                string? input = Console.ReadLine();
+                if (input is null)
                 {
-                    case SmallBoardChoice:
-                        return _boardFactory.CreateRandom(10, 20);
+                    return null;
+                }
 
-                    case MediumBoardChoice:
-                        return _boardFactory.CreateRandom(15, 30);
+                var request = new MenuRequest
+                {
+                    Choice = int.TryParse(input, out int choice)
+                        ? (MenuChoice)choice
+                        : (MenuChoice)(-1)
+                };
 
-                    case LargeBoardChoice:
-                        return _boardFactory.CreateRandom(20, 40);
+                var result = _menuValidator.Validate(request);
+                if (!result.IsValid)
+                {
+                    foreach (var error in result.Errors)
+                    {
+                        Console.WriteLine(error.ErrorMessage);
+                    }
+                    Console.WriteLine();
+                    continue;
+                }
 
-                    case ExitChoice:
-                    case null:
-                        return null;
+                if (request.Choice == MenuChoice.Exit)
+                {
+                    return null;
+                }
 
-                    default:
-                        Console.WriteLine();
-                        Console.WriteLine(
-                            $"Invalid choice. Enter {ExitChoice}, " +
-                            $"{SmallBoardChoice}, {MediumBoardChoice}, " +
-                            $"or {LargeBoardChoice}.");
-                        Console.WriteLine();
-                        break;
+                if (request.Choice == MenuChoice.Custom)
+                {
+                    return SelectCustomBoard();
+                }
+
+                BoardRequest boardRequest = request.Choice switch
+                {
+                    MenuChoice.Small => SmallBoard,
+                    MenuChoice.Medium => MediumBoard,
+                    MenuChoice.Large => LargeBoard,
+                    _ => throw new InvalidOperationException("The validated menu choice has no board size.")
+                };
+
+                return _boardFactory.CreateRandom(boardRequest);
+            }
+        }
+
+        /// Summary:
+        /// Reads custom dimensions and retries invalid input until a board is created or input ends.
+        private Board? SelectCustomBoard()
+        {
+            while (true)
+            {
+                Console.Write("Rows: ");
+                string? rowsInput = Console.ReadLine();
+                if (rowsInput is null)
+                {
+                    return null;
+                }
+
+                Console.Write("Columns: ");
+                string? columnsInput = Console.ReadLine();
+                if (columnsInput is null)
+                {
+                    return null;
+                }
+
+                if (!int.TryParse(rowsInput, out int rows) ||
+                    !int.TryParse(columnsInput, out int columns))
+                {
+                    Console.WriteLine("Enter whole numbers for rows and columns.");
+                    continue;
+                }
+
+                var request = new BoardRequest { Rows = rows, Columns = columns };
+                try
+                {
+                    return _boardFactory.CreateRandom(request);
+                }
+                catch (ValidationException exception)
+                {
+                    foreach (var error in exception.Errors)
+                    {
+                        Console.WriteLine(error.ErrorMessage);
+                    }
                 }
             }
-
-            // Summary: Prompts for a field size and returns a random board, or null to exit.
         }
-        //Prompts for a field size and returns a random board, or null to exit.
     }
 }
