@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using FluentValidation;
 using GameOfLife.ConsoleApp.Models;
-using GameOfLife.ConsoleApp.Service;
+using GameOfLife.Core.Models;
+using GameOfLife.Core.Service;
 
 namespace GameOfLife.ConsoleApp.UI
 {
@@ -14,46 +16,120 @@ namespace GameOfLife.ConsoleApp.UI
         private readonly BoardFactory _boardFactory;
         private readonly GameService _gameService;
         private readonly IValidator<MenuRequest> _menuValidator;
+        private readonly GameFileService _fileService;
+        private readonly string _savePath;
+        private static readonly TimeSpan GenerationInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan InputPollInterval = TimeSpan.FromMilliseconds(50);
 
         /// Summary:
-        /// Receives the renderer, board factory, menu validator, and generation service.
+        /// Receives the game services, renderer, menu validator, and location of the save file.
         public ConsoleApplication(ConsoleRenderer renderer, BoardFactory boardFactory,
-            IValidator<MenuRequest> menuValidator, GameService gameService)
+            IValidator<MenuRequest> menuValidator, GameService gameService,
+            GameFileService fileService, string savePath)
         {
             ArgumentNullException.ThrowIfNull(renderer);
             ArgumentNullException.ThrowIfNull(boardFactory);
             ArgumentNullException.ThrowIfNull(menuValidator);
             ArgumentNullException.ThrowIfNull(gameService);
+            ArgumentNullException.ThrowIfNull(fileService);
+            ArgumentException.ThrowIfNullOrWhiteSpace(savePath);
 
             _renderer = renderer;
             _boardFactory = boardFactory;
             _menuValidator = menuValidator;
             _gameService = gameService;
+            _fileService = fileService;
+            _savePath = savePath;
         }
 
         /// Summary:
-        /// Displays the selected board and calculates its next generation on each one-second tick.
+        /// Starts or restores a game and handles saving, stopping, and one-second generation updates.
         public async Task RunAsync()
         {
-            Board? board = SelectBoard();
-            if (board is null)
+            if (Console.IsInputRedirected)
+            {
+                Console.WriteLine("Run the game in an interactive terminal so keyboard controls are available.");
+                return;
+            }
+
+            GameState? state = await SelectGameAsync();
+            if (state is null)
             {
                 return;
             }
 
-            _renderer.Render(board);
-
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-            while (await timer.WaitForNextTickAsync())
+            using var stop = new CancellationTokenSource();
+            ConsoleCancelEventHandler cancelHandler = (_, args) =>
             {
-                board = _gameService.NextIterationStep(board);
-                _renderer.Render(board);
+                args.Cancel = true;
+                stop.Cancel();
+            };
+            Console.CancelKeyPress += cancelHandler;
+
+            try
+            {
+                _renderer.Render(state);
+                var clock = Stopwatch.StartNew();
+                string? message = null;
+
+                while (!stop.IsCancellationRequested)
+                {
+                    if (Console.KeyAvailable)
+                    {
+                        ConsoleKey key = Console.ReadKey(intercept: true).Key;
+                        if (key is ConsoleKey.Q or ConsoleKey.Escape)
+                        {
+                            break;
+                        }
+
+                        if (key == ConsoleKey.S)
+                        {
+                            message = await SaveGameAsync(state, stop.Token);
+                            _renderer.Render(state, message);
+                        }
+                    }
+
+                    stop.Token.ThrowIfCancellationRequested();
+                    if (clock.Elapsed >= GenerationInterval)
+                    {
+                        state = _gameService.NextIterationStep(state);
+                        _renderer.Render(state, message);
+                        clock.Restart();
+                    }
+
+                    await Task.Delay(InputPollInterval, stop.Token);
+                }
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+                // Ctrl+C cancels both the short input wait and an active file write.
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancelHandler;
+            }
+
+            Console.WriteLine("Game stopped.");
+        }
+
+        /// Summary:
+        /// Saves the displayed state and returns a success or error message without ending the game.
+        private async Task<string> SaveGameAsync(GameState state, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _fileService.SaveAsync(state, _savePath, cancellationToken);
+                return $"Saved iteration {state.Iteration} to {_savePath}";
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return $"Could not save: {exception.Message}";
             }
         }
 
         /// Summary:
-        /// Validates menu input and creates the selected board, or returns null when exiting.
-        private Board? SelectBoard()
+        /// Offers new games and loading an existing save, returning null when the user exits.
+        private async Task<GameState?> SelectGameAsync()
         {
             while (true)
             {
@@ -63,7 +139,9 @@ namespace GameOfLife.ConsoleApp.UI
                 Console.WriteLine($"{(int)MenuChoice.Medium}. Medium - {MediumBoard.Rows} x {MediumBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Large}. Large  - {LargeBoard.Rows} x {LargeBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Custom}. Custom size");
+                Console.WriteLine($"{(int)MenuChoice.Load}. Load saved game");
                 Console.WriteLine($"{(int)MenuChoice.Exit}. Exit");
+                Console.WriteLine($"Save file: {_savePath}");
                 Console.Write("Your choice: ");
 
                 string? input = Console.ReadLine();
@@ -95,9 +173,23 @@ namespace GameOfLife.ConsoleApp.UI
                     return null;
                 }
 
+                if (request.Choice == MenuChoice.Load)
+                {
+                    try
+                    {
+                        return await _fileService.LoadAsync(_savePath);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                    {
+                        Console.WriteLine($"Could not load: {exception.Message}");
+                        continue;
+                    }
+                }
+
                 if (request.Choice == MenuChoice.Custom)
                 {
-                    return SelectCustomBoard();
+                    Board? board = SelectCustomBoard();
+                    return board is null ? null : new GameState(board);
                 }
 
                 BoardRequest boardRequest = request.Choice switch
@@ -108,7 +200,7 @@ namespace GameOfLife.ConsoleApp.UI
                     _ => throw new InvalidOperationException("The validated menu choice has no board size.")
                 };
 
-                return _boardFactory.CreateRandom(boardRequest);
+                return new GameState(_boardFactory.CreateRandom(boardRequest));
             }
         }
 

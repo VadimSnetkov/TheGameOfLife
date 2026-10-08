@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\GameOfLife.ConsoleApp\GameOfLife.ConsoleApp.csproj" />
+    <ProjectReference Include="..\..\src\GameOfLife.Core\GameOfLife.Core.csproj" />
   </ItemGroup>
 
 </Project>

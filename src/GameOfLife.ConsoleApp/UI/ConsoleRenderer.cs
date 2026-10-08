@@ -1,6 +1,6 @@
 using System.Text;
-using GameOfLife.ConsoleApp.Models;
-using GameOfLife.ConsoleApp.Service;
+using GameOfLife.Core.Models;
+using GameOfLife.Core.Service;
 
 namespace GameOfLife.ConsoleApp.UI
 {
@@ -17,13 +17,19 @@ namespace GameOfLife.ConsoleApp.UI
         }
 
         /// Summary:
-        /// Builds and displays one complete frame of the game field.
-        public void Render(Board board)
+        /// Displays the board, iteration count, living-cell count, controls, and latest save message.
+        public void Render(GameState state, string? message = null)
         {
-            ArgumentNullException.ThrowIfNull(board);
+            ArgumentNullException.ThrowIfNull(state);
+            Board board = state.Board;
             var output = new StringBuilder();
             output.AppendLine("TheGameOfLife");
-            output.AppendLine("# = alive, . = dead | Ctrl+C to exit");
+            output.AppendLine($"Iteration: {state.Iteration} | Living cells: {_boardService.CountLivingCells(board)}");
+            output.AppendLine("# = alive, . = dead | S: save | Q / Esc / Ctrl+C: exit");
+            if (message is not null)
+            {
+                output.AppendLine(message);
+            }
             output.AppendLine();
 
             for (int row = 0; row < board.Rows; row++)
@@ -35,7 +41,10 @@ namespace GameOfLife.ConsoleApp.UI
                 output.AppendLine();
             }
 
-            Console.Clear();
+            if (!Console.IsOutputRedirected)
+            {
+                Console.Clear();
+            }
             Console.Write(output.ToString());
         }
     }
