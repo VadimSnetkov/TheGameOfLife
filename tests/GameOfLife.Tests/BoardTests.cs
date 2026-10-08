@@ -1,5 +1,5 @@
-using GameOfLife.ConsoleApp.Models;
-using GameOfLife.ConsoleApp.Service;
+using GameOfLife.Core.Models;
+using GameOfLife.Core.Service;
 using Xunit;
 
 namespace GameOfLife.Tests
@@ -74,6 +74,23 @@ namespace GameOfLife.Tests
 
             // Assert
             Assert.False(_boardService.IsAlive(board, 2, 4));
+        }
+
+        /// Summary:
+        /// Counts empty, partially populated, and fully populated rectangular boards.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(4)]
+        [InlineData(15)]
+        public void Test_CountLivingCells_ReturnsActualPopulation(int livingCells)
+        {
+            var board = new Board(3, 5);
+            for (int index = 0; index < livingCells; index++)
+            {
+                _boardService.SetCell(board, index / board.Columns, index % board.Columns, true);
+            }
+
+            Assert.Equal(livingCells, _boardService.CountLivingCells(board));
         }
     }
 }

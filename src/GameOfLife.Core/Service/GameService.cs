@@ -1,6 +1,6 @@
-using GameOfLife.ConsoleApp.Models;
+using GameOfLife.Core.Models;
 
-namespace GameOfLife.ConsoleApp.Service
+namespace GameOfLife.Core.Service
 {
     public class GameService
     {
@@ -40,6 +40,16 @@ namespace GameOfLife.ConsoleApp.Service
             }
 
             return nextBoard;
+        }
+
+        /// Summary:
+        /// Returns a new game state with the next board and an incremented iteration count.
+        public GameState NextIterationStep(GameState currentState)
+        {
+            ArgumentNullException.ThrowIfNull(currentState);
+            long nextIteration = checked(currentState.Iteration + 1);
+            Board nextBoard = NextIterationStep(currentState.Board);
+            return new GameState(nextBoard, nextIteration);
         }
 
         /// Summary:
