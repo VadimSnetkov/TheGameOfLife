@@ -17,29 +17,31 @@ namespace GameOfLife.ConsoleApp.UI
         private readonly GameService _gameService;
         private readonly IValidator<MenuRequest> _menuValidator;
         private readonly GameFileService _fileService;
-        private readonly string _savePath;
         private static readonly TimeSpan GenerationInterval = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan InputPollInterval = TimeSpan.FromMilliseconds(50);
 
         /// Summary:
         /// Receives the game services, renderer, menu validator, and location of the save file.
-        public ConsoleApplication(ConsoleRenderer renderer, BoardFactory boardFactory,
-            IValidator<MenuRequest> menuValidator, GameService gameService,
-            GameFileService fileService, string savePath)
+        /// Summary:
+        /// Receives the game services, renderer, menu validator, and file storage service.
+        public ConsoleApplication(
+            ConsoleRenderer renderer,
+            BoardFactory boardFactory,
+            IValidator<MenuRequest> menuValidator,
+            GameService gameService,
+            GameFileService fileService)
         {
             ArgumentNullException.ThrowIfNull(renderer);
             ArgumentNullException.ThrowIfNull(boardFactory);
             ArgumentNullException.ThrowIfNull(menuValidator);
             ArgumentNullException.ThrowIfNull(gameService);
             ArgumentNullException.ThrowIfNull(fileService);
-            ArgumentException.ThrowIfNullOrWhiteSpace(savePath);
 
             _renderer = renderer;
             _boardFactory = boardFactory;
             _menuValidator = menuValidator;
             _gameService = gameService;
             _fileService = fileService;
-            _savePath = savePath;
         }
 
         /// Summary:
@@ -118,8 +120,8 @@ namespace GameOfLife.ConsoleApp.UI
         {
             try
             {
-                await _fileService.SaveAsync(state, _savePath, cancellationToken);
-                return $"Saved iteration {state.Iteration} to {_savePath}";
+                await _fileService.SaveAsync(state, cancellationToken);
+                return $"Saved iteration {state.Iteration} to {_fileService.SavePath}";
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
             {
@@ -141,7 +143,7 @@ namespace GameOfLife.ConsoleApp.UI
                 Console.WriteLine($"{(int)MenuChoice.Custom}. Custom size");
                 Console.WriteLine($"{(int)MenuChoice.Load}. Load saved game");
                 Console.WriteLine($"{(int)MenuChoice.Exit}. Exit");
-                Console.WriteLine($"Save file: {_savePath}");
+                Console.WriteLine($"Save file: {_fileService.SavePath}");
                 Console.Write("Your choice: ");
 
                 string? input = Console.ReadLine();
@@ -177,7 +179,7 @@ namespace GameOfLife.ConsoleApp.UI
                 {
                     try
                     {
-                        return await _fileService.LoadAsync(_savePath);
+                        return await _fileService.LoadAsync();
                     }
                     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
                     {

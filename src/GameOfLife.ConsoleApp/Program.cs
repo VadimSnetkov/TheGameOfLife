@@ -1,30 +1,43 @@
+using FluentValidation;
+using GameOfLife.ConsoleApp.Models;
 using GameOfLife.ConsoleApp.UI;
 using GameOfLife.ConsoleApp.Validator;
+using GameOfLife.Core.Models;
 using GameOfLife.Core.Service;
 using GameOfLife.Core.Validator;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameOfLife.ConsoleApp
 {
     internal class Program
     {
         /// Summary:
-        /// Creates the services and validators, then starts the console application.
+        /// Registers configuration and services, then starts the console application.
         static async Task Main()
         {
-            var boardService = new BoardService();
-            var boardValidator = new BoardRequestValidator();
-            var boardFactory = new BoardFactory(boardValidator, new Random(), boardService);
-            var gameService = new GameService(boardService);
-            var fileService = new GameFileService(boardService, new GameSaveDataValidator(boardValidator));
-            var renderer = new ConsoleRenderer(boardService);
+            IServiceCollection services = new ServiceCollection();
 
-            string savePath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TheGameOfLife", "game.json");
+            services.AddSingleton<IConfiguration>(_ => new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .Build());
 
-            var application = new ConsoleApplication(
-                renderer, boardFactory, new MenuRequestValidator(), gameService, fileService, savePath);
+            services.AddSingleton<IValidator<BoardRequest>, BoardRequestValidator>();
+            services.AddSingleton<IValidator<MenuRequest>, MenuRequestValidator>();
+            services.AddSingleton<IValidator<GameSaveData>, GameSaveDataValidator>();
 
+            services.AddSingleton<Random>(_ => Random.Shared);
+            services.AddSingleton<BoardService>();
+            services.AddSingleton<BoardFactory>();
+            services.AddSingleton<GameService>();
+            services.AddSingleton<GameFileService>();
+            services.AddSingleton<ConsoleRenderer>();
+            services.AddSingleton<ConsoleApplication>();
+
+            using ServiceProvider provider = services.BuildServiceProvider();
+
+            var application = provider.GetRequiredService<ConsoleApplication>();
             await application.RunAsync();
         }
     }
