@@ -1,7 +1,7 @@
 using FluentValidation;
-using GameOfLife.ConsoleApp.Models;
-using GameOfLife.ConsoleApp.Service;
-using GameOfLife.ConsoleApp.Validator;
+using GameOfLife.Core.Models;
+using GameOfLife.Core.Service;
+using GameOfLife.Core.Validator;
 using Xunit;
 
 namespace GameOfLife.Tests

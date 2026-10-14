@@ -1,5 +1,5 @@
-using GameOfLife.ConsoleApp.Models;
-using GameOfLife.ConsoleApp.Service;
+using GameOfLife.Core.Models;
+using GameOfLife.Core.Service;
 using Xunit;
 
 namespace GameOfLife.Tests
@@ -42,6 +42,35 @@ namespace GameOfLife.Tests
 
             // Assert
             Assert.False(_boardService.IsAlive(nextBoard, 0, 0));
+        }
+
+        /// Summary:
+        /// Checks that advancing a loaded state increments its counter without changing the old state.
+        [Fact]
+        public void Test_NextIterationStep_AdvancesStateAndPreservesPreviousState()
+        {
+            var board = new Board(3, 5);
+            _boardService.SetCell(board, 1, 2, true);
+            var state = new GameState(board, 12);
+            var game = new GameService(_boardService);
+
+            GameState nextState = game.NextIterationStep(state);
+
+            Assert.Equal(12L, state.Iteration);
+            Assert.Equal(13L, nextState.Iteration);
+            Assert.NotSame(state.Board, nextState.Board);
+            Assert.Equal(1, _boardService.CountLivingCells(state.Board));
+            Assert.Equal(0, _boardService.CountLivingCells(nextState.Board));
+        }
+
+        /// Summary:
+        /// Checks that a new game starts at iteration zero.
+        [Fact]
+        public void Test_GameState_StartsAtZero()
+        {
+            var state = new GameState(new Board(2, 3));
+
+            Assert.Equal(0L, state.Iteration);
         }
     }
 }

@@ -1,6 +1,6 @@
-using GameOfLife.ConsoleApp.Models;
+using GameOfLife.Core.Models;
 
-namespace GameOfLife.ConsoleApp.Service
+namespace GameOfLife.Core.Service
 {
     public class BoardService
     {
@@ -18,6 +18,25 @@ namespace GameOfLife.ConsoleApp.Service
         {
             ValidateCoordinates(board, row, column);
             board.Cells[row, column] = isAlive;
+        }
+
+        /// Summary:
+        /// Counts the living cells on the supplied board.
+        public int CountLivingCells(Board board)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+            int count = 0;
+            for (int row = 0; row < board.Rows; row++)
+            {
+                for (int column = 0; column < board.Columns; column++)
+                {
+                    if (board.Cells[row, column])
+                    {
+                        count++;
+                    }
+                }
+            }
+            return count;
         }
 
         /// Summary:

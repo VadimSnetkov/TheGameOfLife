@@ -1,42 +1,65 @@
-# The Game Of Life
+# TheGameOfLife
 
 Zero-player cellular automaton based on John Horton Conway game.
 
-## Current features
+## Current features — Iteration 2
 
-- Field-size selection: small, medium, or large.
-- Random starting layout with a 30% chance of each cell being alive.
+- Small, medium, large, or custom boards (1–100 rows and 1–200 columns).
+- A random starting layout with a 30% chance of each cell being alive.
 - Conway's rules applied approximately once per second.
-- Console display using `#` for living cells and `.` for dead cells.
-- Input, board-size, and coordinate validation.
+- Iteration and living-cell counters. A new game starts at iteration zero.
+- Save the current board and iteration to JSON, then load them at startup.
+- Save-file validation and readable errors for missing, damaged, or inaccessible files.
+- Responsive keyboard controls for saving and stopping.
 
-Cells outside the board are treated as dead. Each generation is calculated on a separate board so updates happen consistently.
+Cells outside the board are treated as dead. Each generation is calculated on a separate board.
 
-## Structure
+## Projects
 
-- **Board** — stores cell states and validates access.
-- **Game** — counts neighbours and calculates generations.
-- **BoardFactory** — creates random starting boards.
-- **ConsoleRenderer** — displays the field.
-- **ConsoleApplication** — handles the menu and simulation loop.
-- **Program** — creates the objects and starts the application.
+- **GameOfLife.Core** — board and game-state models, game rules, board creation, statistics, file storage, and board/save validation. Contains no console calls.
+- **GameOfLife.ConsoleApp** — menu, keyboard controls, rendering, and application setup. References Core.
+- **GameOfLife.Tests** — xUnit tests referencing Core, including game rules, custom dimensions, statistics, and save/load behavior.
 
-## Run
+Models hold data. Services operate on that data. Each class is in its own file.
 
-Requires the **.NET 10 SDK**.
+## Run and test
 
-From the repository root:
+Requires the **.NET 10 SDK**. Run these commands from the repository root:
 
 ```powershell
+dotnet build
+dotnet test
 dotnet run --project src/GameOfLife.ConsoleApp
 ```
 
-Choose `1`, `2`, or `3` to start a game. Choose `0` to exit the menu, or press `Ctrl+C` during the simulation.
+Run in an interactive terminal such as Visual Studio's console or PowerShell.
 
-## Next steps
+## Controls
 
-- Verify the game rules with automated tests.
-- Separate game logic into a class library.
-- Add generation and living-cell counters.
-- Implement saving, loading, and graceful stopping.
-- Support multiple parallel games and combined statistics.
+| Context | Key | Action |
+| --- | --- | --- |
+| Startup menu | 1 / 2 / 3 | Start a preset board |
+| Startup menu | 4 | Enter custom rows and columns |
+| Startup menu | 5 | Load the saved game |
+| Startup menu | 0 | Exit |
+| Running game | S | Save the displayed state; replace the previous save |
+| Running game | Q / Esc | Exit |
+| Anywhere | Ctrl+C | Stop the application |
+
+Saving is explicit: exiting does not automatically save. The latest successful save remains available after restarting.
+
+On Windows, the save file is `%LOCALAPPDATA%\TheGameOfLife\game.json`. The startup menu also displays its full path. The same path is used regardless of the directory from which the app is launched.
+
+## Implementation
+
+- `GameState` holds the board and iteration number.
+- `GameService.NextIterationStep(GameState)` returns the next state while preserving the previous one.
+- `BoardService.CountLivingCells` calculates the population from the actual board.
+- `GameFileService` writes a separate temporary file before replacing the previous save.
+- `GameSaveData` stores cells in a flat array, row by row, for JSON serialization.
+- FluentValidation checks custom sizes and saved data before a board is restored.
+- The console checks keys every 50 milliseconds and uses elapsed time to update the board about once a second.
+
+## Next iteration
+
+Run multiple games in parallel, select games to display, save all games, and show combined statistics.

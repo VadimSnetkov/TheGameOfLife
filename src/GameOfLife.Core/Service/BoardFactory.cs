@@ -1,7 +1,7 @@
 using FluentValidation;
-using GameOfLife.ConsoleApp.Models;
+using GameOfLife.Core.Models;
 
-namespace GameOfLife.ConsoleApp.Service
+namespace GameOfLife.Core.Service
 {
     public class BoardFactory
     {

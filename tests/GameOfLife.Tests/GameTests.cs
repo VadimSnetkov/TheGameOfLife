@@ -1,5 +1,5 @@
-using GameOfLife.ConsoleApp.Models;
-using GameOfLife.ConsoleApp.Service;
+using GameOfLife.Core.Models;
+using GameOfLife.Core.Service;
 using Xunit;
 
 namespace GameOfLife.Tests

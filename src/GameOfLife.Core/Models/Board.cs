@@ -1,4 +1,4 @@
-namespace GameOfLife.ConsoleApp.Models
+namespace GameOfLife.Core.Models
 {
     public class Board
     {
