@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using FluentValidation;
 using GameOfLife.ConsoleApp.Models;
 using GameOfLife.Core.Models;
@@ -11,241 +10,139 @@ namespace GameOfLife.ConsoleApp.UI
         private static readonly BoardRequest SmallBoard = new() { Rows = 10, Columns = 20 };
         private static readonly BoardRequest MediumBoard = new() { Rows = 15, Columns = 30 };
         private static readonly BoardRequest LargeBoard = new() { Rows = 20, Columns = 40 };
-
-        private readonly ConsoleRenderer _renderer;
-        private readonly BoardFactory _boardFactory;
-        private readonly GameService _gameService;
         private readonly IValidator<MenuRequest> _menuValidator;
+        private readonly SessionService _sessionService;
         private readonly GameFileService _fileService;
-        private static readonly TimeSpan GenerationInterval = TimeSpan.FromSeconds(1);
-        private static readonly TimeSpan InputPollInterval = TimeSpan.FromMilliseconds(50);
+        private readonly SessionRunner _runner;
 
         /// Summary:
-        /// Receives the game services, renderer, menu validator, and location of the save file.
-        /// Summary:
-        /// Receives the game services, renderer, menu validator, and file storage service.
-        public ConsoleApplication(
-            ConsoleRenderer renderer,
-            BoardFactory boardFactory,
-            IValidator<MenuRequest> menuValidator,
-            GameService gameService,
-            GameFileService fileService)
+        /// Receives startup validation, session creation, file loading, and the interactive runner.
+        public ConsoleApplication(IValidator<MenuRequest> menuValidator, SessionService sessionService,
+            GameFileService fileService, SessionRunner runner)
         {
-            ArgumentNullException.ThrowIfNull(renderer);
-            ArgumentNullException.ThrowIfNull(boardFactory);
-            ArgumentNullException.ThrowIfNull(menuValidator);
-            ArgumentNullException.ThrowIfNull(gameService);
-            ArgumentNullException.ThrowIfNull(fileService);
-
-            _renderer = renderer;
-            _boardFactory = boardFactory;
             _menuValidator = menuValidator;
-            _gameService = gameService;
+            _sessionService = sessionService;
             _fileService = fileService;
+            _runner = runner;
         }
 
         /// Summary:
-        /// Starts or restores a game and handles saving, stopping, and one-second generation updates.
+        /// Selects a new or saved session and starts the interactive dashboard.
         public async Task RunAsync()
         {
-            if (Console.IsInputRedirected)
+            if (Console.IsInputRedirected || Console.IsOutputRedirected)
             {
                 Console.WriteLine("Run the game in an interactive terminal so keyboard controls are available.");
                 return;
             }
 
-            GameState? state = await SelectGameAsync();
-            if (state is null)
+            GameSession? session = await SelectSessionAsync();
+            if (session is not null)
             {
-                return;
-            }
-
-            using var stop = new CancellationTokenSource();
-            ConsoleCancelEventHandler cancelHandler = (_, args) =>
-            {
-                args.Cancel = true;
-                stop.Cancel();
-            };
-            Console.CancelKeyPress += cancelHandler;
-
-            try
-            {
-                _renderer.Render(state);
-                var clock = Stopwatch.StartNew();
-                string? message = null;
-
-                while (!stop.IsCancellationRequested)
-                {
-                    if (Console.KeyAvailable)
-                    {
-                        ConsoleKey key = Console.ReadKey(intercept: true).Key;
-                        if (key is ConsoleKey.Q or ConsoleKey.Escape)
-                        {
-                            break;
-                        }
-
-                        if (key == ConsoleKey.S)
-                        {
-                            message = await SaveGameAsync(state, stop.Token);
-                            _renderer.Render(state, message);
-                        }
-                    }
-
-                    stop.Token.ThrowIfCancellationRequested();
-                    if (clock.Elapsed >= GenerationInterval)
-                    {
-                        state = _gameService.NextIterationStep(state);
-                        _renderer.Render(state, message);
-                        clock.Restart();
-                    }
-
-                    await Task.Delay(InputPollInterval, stop.Token);
-                }
-            }
-            catch (OperationCanceledException) when (stop.IsCancellationRequested)
-            {
-                // Ctrl+C cancels both the short input wait and an active file write.
-            }
-            finally
-            {
-                Console.CancelKeyPress -= cancelHandler;
-            }
-
-            Console.WriteLine("Game stopped.");
-        }
-
-        /// Summary:
-        /// Saves the displayed state and returns a success or error message without ending the game.
-        private async Task<string> SaveGameAsync(GameState state, CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _fileService.SaveAsync(state, cancellationToken);
-                return $"Saved iteration {state.Iteration} to {_fileService.SavePath}";
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
-                return $"Could not save: {exception.Message}";
+                await _runner.RunAsync(session);
             }
         }
 
         /// Summary:
-        /// Offers new games and loading an existing save, returning null when the user exits.
-        private async Task<GameState?> SelectGameAsync()
+        /// Offers new sessions, legacy single-game saves, and saved multi-game sessions.
+        private async Task<GameSession?> SelectSessionAsync()
         {
             while (true)
             {
                 Console.WriteLine("TheGameOfLife");
-                Console.WriteLine("Choose a field size (rows x columns):");
                 Console.WriteLine($"{(int)MenuChoice.Small}. Small  - {SmallBoard.Rows} x {SmallBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Medium}. Medium - {MediumBoard.Rows} x {MediumBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Large}. Large  - {LargeBoard.Rows} x {LargeBoard.Columns}");
                 Console.WriteLine($"{(int)MenuChoice.Custom}. Custom size");
-                Console.WriteLine($"{(int)MenuChoice.Load}. Load saved game");
+                Console.WriteLine($"{(int)MenuChoice.Load}. Load Iteration 2 single-game save");
+                Console.WriteLine($"{(int)MenuChoice.LoadSession}. Load saved session (all games)");
                 Console.WriteLine($"{(int)MenuChoice.Exit}. Exit");
-                Console.WriteLine($"Save file: {_fileService.SavePath}");
+                Console.WriteLine($"Session file: {_fileService.SessionSavePath}");
                 Console.Write("Your choice: ");
-
                 string? input = Console.ReadLine();
                 if (input is null)
                 {
                     return null;
                 }
-
                 var request = new MenuRequest
                 {
-                    Choice = int.TryParse(input, out int choice)
-                        ? (MenuChoice)choice
-                        : (MenuChoice)(-1)
+                    Choice = int.TryParse(input, out int choice) ? (MenuChoice)choice : (MenuChoice)(-1)
                 };
-
                 var result = _menuValidator.Validate(request);
                 if (!result.IsValid)
                 {
-                    foreach (var error in result.Errors)
-                    {
-                        Console.WriteLine(error.ErrorMessage);
-                    }
-                    Console.WriteLine();
+                    Console.WriteLine(result.Errors[0].ErrorMessage);
                     continue;
                 }
-
                 if (request.Choice == MenuChoice.Exit)
                 {
                     return null;
                 }
 
-                if (request.Choice == MenuChoice.Load)
+                try
                 {
-                    try
+                    if (request.Choice == MenuChoice.Load)
                     {
-                        return await _fileService.LoadAsync();
+                        return new GameSession(new[] { await _fileService.LoadAsync() });
                     }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                    if (request.Choice == MenuChoice.LoadSession)
                     {
-                        Console.WriteLine($"Could not load: {exception.Message}");
-                        continue;
+                        return await _fileService.LoadAllAsync();
                     }
+
+                    BoardRequest? board = request.Choice == MenuChoice.Custom
+                        ? ReadCustomSize()
+                        : request.Choice switch
+                        {
+                            MenuChoice.Small => SmallBoard,
+                            MenuChoice.Medium => MediumBoard,
+                            MenuChoice.Large => LargeBoard,
+                            _ => throw new InvalidOperationException("This choice has no board size.")
+                        };
+                    if (board is null)
+                    {
+                        return null;
+                    }
+                    Console.Write($"Number of games (1-{GameSession.MaximumGames}): ");
+                    string? countInput = Console.ReadLine();
+                    if (countInput is null)
+                    {
+                        return null;
+                    }
+                    var sessionRequest = new SessionRequest
+                    {
+                        Board = board, GameCount = int.TryParse(countInput, out int count) ? count : 0
+                    };
+                    return _sessionService.Create(sessionRequest);
                 }
-
-                if (request.Choice == MenuChoice.Custom)
+                catch (ValidationException exception)
                 {
-                    Board? board = SelectCustomBoard();
-                    return board is null ? null : new GameState(board);
+                    Console.WriteLine(string.Join(" ", exception.Errors.Select(error => error.ErrorMessage)));
                 }
-
-                BoardRequest boardRequest = request.Choice switch
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
                 {
-                    MenuChoice.Small => SmallBoard,
-                    MenuChoice.Medium => MediumBoard,
-                    MenuChoice.Large => LargeBoard,
-                    _ => throw new InvalidOperationException("The validated menu choice has no board size.")
-                };
-
-                return new GameState(_boardFactory.CreateRandom(boardRequest));
+                    Console.WriteLine($"Could not load: {exception.Message}");
+                }
             }
         }
 
         /// Summary:
-        /// Reads custom dimensions and retries invalid input until a board is created or input ends.
-        private Board? SelectCustomBoard()
+        /// Reads custom dimensions; request validation handles invalid numbers and unsupported sizes.
+        private static BoardRequest? ReadCustomSize()
         {
-            while (true)
+            Console.Write("Rows: ");
+            string? rows = Console.ReadLine();
+            if (rows is null)
             {
-                Console.Write("Rows: ");
-                string? rowsInput = Console.ReadLine();
-                if (rowsInput is null)
-                {
-                    return null;
-                }
-
-                Console.Write("Columns: ");
-                string? columnsInput = Console.ReadLine();
-                if (columnsInput is null)
-                {
-                    return null;
-                }
-
-                if (!int.TryParse(rowsInput, out int rows) ||
-                    !int.TryParse(columnsInput, out int columns))
-                {
-                    Console.WriteLine("Enter whole numbers for rows and columns.");
-                    continue;
-                }
-
-                var request = new BoardRequest { Rows = rows, Columns = columns };
-                try
-                {
-                    return _boardFactory.CreateRandom(request);
-                }
-                catch (ValidationException exception)
-                {
-                    foreach (var error in exception.Errors)
-                    {
-                        Console.WriteLine(error.ErrorMessage);
-                    }
-                }
+                return null;
             }
+            Console.Write("Columns: ");
+            string? columns = Console.ReadLine();
+            return columns is null ? null : new BoardRequest
+            {
+                Rows = int.TryParse(rows, out int rowCount) ? rowCount : 0,
+                Columns = int.TryParse(columns, out int columnCount) ? columnCount : 0
+            };
         }
     }
 }

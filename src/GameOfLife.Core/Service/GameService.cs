@@ -19,13 +19,15 @@ namespace GameOfLife.Core.Service
 
         /// Summary:
         /// Returns the next generation without modifying the supplied board.
-        public Board NextIterationStep(Board currentBoard)
+        public Board NextIterationStep(Board currentBoard, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(currentBoard);
+            cancellationToken.ThrowIfCancellationRequested();
             var nextBoard = new Board(currentBoard.Rows, currentBoard.Columns);
 
             for (int row = 0; row < currentBoard.Rows; row++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 for (int column = 0; column < currentBoard.Columns; column++)
                 {
                     int neighbours = CountLivingNeighbours(currentBoard, row, column);
@@ -43,13 +45,27 @@ namespace GameOfLife.Core.Service
         }
 
         /// Summary:
-        /// Returns a new game state with the next board and an incremented iteration count.
-        public GameState NextIterationStep(GameState currentState)
+        /// Advances the game and detects whether its living cells have stopped changing.
+        public GameState NextIterationStep(
+            GameState currentState,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(currentState);
+
             long nextIteration = checked(currentState.Iteration + 1);
-            Board nextBoard = NextIterationStep(currentState.Board);
-            return new GameState(nextBoard, nextIteration);
+
+            Board nextBoard = NextIterationStep(
+                currentState.Board,
+                cancellationToken);
+
+            bool isStagnant =
+                _boardService.CountLivingCells(nextBoard) > 0
+                && _boardService.AreEqual(
+                    currentState.Board,
+                    nextBoard,
+                    cancellationToken);
+
+            return new GameState(nextBoard, nextIteration, isStagnant);
         }
 
         /// Summary:

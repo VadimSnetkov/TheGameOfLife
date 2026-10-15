@@ -2,29 +2,33 @@
 
 Zero-player cellular automaton based on John Horton Conway game.
 
-## Current features — Iteration 2
+## Current features — Iteration 3
 
-- Small, medium, large, or custom boards (1–100 rows and 1–200 columns).
-- A random starting layout with a 30% chance of each cell being alive.
-- Conway's rules applied approximately once per second.
-- Iteration and living-cell counters. A new game starts at iteration zero.
-- Save the current board and iteration to JSON, then load them at startup.
-- Save-file validation and readable errors for missing, damaged, or inaccessible files.
-- Responsive keyboard controls for saving and stopping.
+- Run 1–1,000 independent games with parallel generation updates.
+- Choose small, medium, large, or custom boards: 1–100 rows and 1–200 columns.
+- Each cell starts with a 30% chance of being alive.
+- Display up to eight selected games, identified by permanent numbers within the session.
+- Change the displayed games while every game continues evolving.
+- Show the total game count, live game count, total living cells, and individual generation counts.
+- Save all games together and restore their boards, numbers, and iteration counts at startup.
+- Load existing Iteration 2 single-game saves.
+- Validate input and saved data with FluentValidation.
+- Stop while updating or saving; failed or cancelled saves preserve the previous completed file.
 
-Cells outside the board are treated as dead. Each generation is calculated on a separate board.
+A **live game** has at least one living cell. Stable patterns and oscillators still count as live.
+Cells outside a board are dead. Updates create new boards without changing the previous generation.
 
 ## Projects
 
-- **GameOfLife.Core** — board and game-state models, game rules, board creation, statistics, file storage, and board/save validation. Contains no console calls.
-- **GameOfLife.ConsoleApp** — menu, keyboard controls, rendering, and application setup. References Core.
-- **GameOfLife.Tests** — xUnit tests referencing Core, including game rules, custom dimensions, statistics, and save/load behavior.
+- **GameOfLife.Core** — models, game rules, parallel session evolution, statistics, persistence, and validation. Contains no console calls.
+- **GameOfLife.ConsoleApp** — startup menu, interactive dashboard, view selection, configuration, and dependency injection.
+- **GameOfLife.Tests** — xUnit tests for Core and the dashboard's selection and layout behavior.
 
-Models hold data. Services operate on that data. Each class is in its own file.
+Models hold data. Services operate on that data. Each class has its own file.
 
 ## Run and test
 
-Requires the **.NET 10 SDK**. Run these commands from the repository root:
+Requires the **.NET 10 SDK**. Run from the repository root:
 
 ```powershell
 dotnet build
@@ -32,34 +36,66 @@ dotnet test
 dotnet run --project src/GameOfLife.ConsoleApp
 ```
 
-Run in an interactive terminal such as Visual Studio's console or PowerShell.
+Use an interactive terminal. A window of **120 columns × 40 rows** is comfortable for eight small boards.
+The dashboard also works at 80 × 24. When a board cannot fit, its panel shows the top-left area and labels
+that area as `View rows x columns`. All cells still participate in the simulation and statistics.
+Select fewer games or enlarge the terminal to see more of each board.
 
 ## Controls
 
 | Context | Key | Action |
 | --- | --- | --- |
-| Startup menu | 1 / 2 / 3 | Start a preset board |
-| Startup menu | 4 | Enter custom rows and columns |
-| Startup menu | 5 | Load the saved game |
-| Startup menu | 0 | Exit |
-| Running game | S | Save the displayed state; replace the previous save |
-| Running game | Q / Esc | Exit |
+| Startup | 1 / 2 / 3 | Choose a preset board size, then enter the number of games |
+| Startup | 4 | Enter custom dimensions and the number of games |
+| Startup | 5 | Load an Iteration 2 single-game save |
+| Startup | 6 | Load a saved session containing all games |
+| Startup | 0 | Exit |
+| Dashboard | V | Enter 1–8 distinct game numbers separated by commas, then press Enter |
+| Dashboard | S | Save all games, including games outside the selected views |
+| Dashboard | Q / Esc | Exit |
+| View editor | Esc | Cancel selection changes |
+| View editor | Q | Exit |
 | Anywhere | Ctrl+C | Stop the application |
 
-Saving is explicit: exiting does not automatically save. The latest successful save remains available after restarting.
+For example, press `V`, type `1,7,42,1000`, and press Enter in a 1,000-game session.
+Editing the selection and saving do not pause evolution. Saving is explicit: exiting does not automatically save.
+A pending save is cancelled when exiting; wait for the success message if you want to keep it.
 
-On Windows, the save file is `%LOCALAPPDATA%\TheGameOfLife\game.json`. The startup menu also displays its full path. The same path is used regardless of the directory from which the app is launched.
+## Save files and configuration
 
-## Implementation
+`src/GameOfLife.ConsoleApp/appsettings.json` configures the folder and file names:
 
-- `GameState` holds the board and iteration number.
-- `GameService.NextIterationStep(GameState)` returns the next state while preserving the previous one.
-- `BoardService.CountLivingCells` calculates the population from the actual board.
-- `GameFileService` writes a separate temporary file before replacing the previous save.
-- `GameSaveData` stores cells in a flat array, row by row, for JSON serialization.
-- FluentValidation checks custom sizes and saved data before a board is restored.
-- The console checks keys every 50 milliseconds and uses elapsed time to update the board about once a second.
+```json
+{
+  "GameSave": {
+    "Folder": "TheGameOfLife",
+    "FileName": "game.json",
+    "SessionFileName": "games.json"
+  }
+}
+```
 
-## Next iteration
+On Windows, the default directory is `%LOCALAPPDATA%\TheGameOfLife`.
+`games.json` contains all games and is separate from the older `game.json` file.
+The game number is its position in the saved array plus one. Loading keeps that order.
+Views initially show the first eight games; the selection itself is not saved.
 
-Run multiple games in parallel, select games to display, save all games, and show combined statistics.
+A save captures one completed session snapshot. Every board and its iteration count belong to that snapshot,
+even if another generation finishes while the file is being written. Files are validated before use and
+written to a temporary file before replacing the previous save.
+
+## How parallel updates work
+
+`GameService` advances one game. `SessionService` uses `Parallel.For` to advance every game in a session,
+with concurrency limited to the processor count. It creates a new session only after all games finish.
+The runner keeps the old session available for rendering and saving until then.
+
+The console runs generation work in a background task and polls keys approximately every 50 milliseconds.
+It aims to start a generation once per second, with only one generation calculation active at a time.
+Large workloads can take longer than one second depending on the computer; updates never overlap or queue indefinitely.
+
+## Verification
+
+The suite includes 97 test cases, covering sequential versus parallel results for 1,000 games,
+all-game statistics, eight-view layout, selection validation, save/load correctness, cancellation,
+old-save compatibility, and saving/loading 1,000 maximum-size boards.
