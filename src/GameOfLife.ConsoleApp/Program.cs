@@ -27,12 +27,18 @@ namespace GameOfLife.ConsoleApp
             services.AddSingleton<IValidator<MenuRequest>, MenuRequestValidator>();
             services.AddSingleton<IValidator<GameSaveData>, GameSaveDataValidator>();
 
+            services.AddSingleton<IValidator<SessionRequest>, SessionRequestValidator>();
+            services.AddSingleton<IValidator<SessionSaveData>, SessionSaveDataValidator>();
+            services.AddSingleton<IValidator<ViewSelection>, ViewSelectionValidator>();
+            services.AddSingleton<SessionService>();
+
             services.AddSingleton<Random>(_ => Random.Shared);
             services.AddSingleton<BoardService>();
             services.AddSingleton<BoardFactory>();
             services.AddSingleton<GameService>();
             services.AddSingleton<GameFileService>();
             services.AddSingleton<ConsoleRenderer>();
+            services.AddSingleton<SessionRunner>();
             services.AddSingleton<ConsoleApplication>();
 
             using ServiceProvider provider = services.BuildServiceProvider();

@@ -7,6 +7,7 @@ namespace GameOfLife.ConsoleApp.Models
         Medium = 2,
         Large = 3,
         Custom = 4,
-        Load = 5
+        Load = 5,
+        LoadSession = 6
     }
 }
