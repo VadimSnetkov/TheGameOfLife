@@ -49,5 +49,37 @@ namespace GameOfLife.Core.Service
             ArgumentOutOfRangeException.ThrowIfNegative(column);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, board.Columns);
         }
+
+        /// Summary:
+        /// Checks whether two boards have the same dimensions and identical cell positions.
+        public bool AreEqual(
+            Board first,
+            Board second,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(first);
+            ArgumentNullException.ThrowIfNull(second);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (first.Rows != second.Rows || first.Columns != second.Columns)
+            {
+                return false;
+            }
+
+            for (int row = 0; row < first.Rows; row++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                for (int column = 0; column < first.Columns; column++)
+                {
+                    if (first.Cells[row, column] != second.Cells[row, column])
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
     }
 }

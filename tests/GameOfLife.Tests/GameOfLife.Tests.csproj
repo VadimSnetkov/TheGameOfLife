@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameOfLife.Core\GameOfLife.Core.csproj" />
+    <ProjectReference Include="..\..\src\GameOfLife.ConsoleApp\GameOfLife.ConsoleApp.csproj" />
   </ItemGroup>
 
 </Project>

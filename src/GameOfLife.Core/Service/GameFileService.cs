@@ -8,74 +8,143 @@ namespace GameOfLife.Core.Service
     public class GameFileService
     {
         private const long MaximumFileSizeBytes = 1_000_000;
-        private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+        private const long MaximumSessionFileSizeBytes = 128_000_000;
+        private static readonly JsonSerializerOptions JsonOptions = new();
         private readonly BoardService _boardService;
         private readonly IValidator<GameSaveData> _validator;
+        private readonly IValidator<SessionSaveData> _sessionValidator;
         public string SavePath { get; }
+        public string SessionSavePath { get; }
 
         /// Summary:
-        /// Receives cell access and validation used when saving and restoring game states.
-        /// Summary:
-        /// Receives dependencies and builds the save path from configuration.
-        public GameFileService(
-            BoardService boardService,
-            IValidator<GameSaveData> validator,
-            IConfiguration configuration)
+        /// Receives validation and builds separate single-game and session paths from configuration.
+        public GameFileService(BoardService boardService, IValidator<GameSaveData> validator,
+            IValidator<SessionSaveData> sessionValidator, IConfiguration configuration)
         {
             ArgumentNullException.ThrowIfNull(boardService);
             ArgumentNullException.ThrowIfNull(validator);
+            ArgumentNullException.ThrowIfNull(sessionValidator);
             ArgumentNullException.ThrowIfNull(configuration);
+            _boardService = boardService;
+            _validator = validator;
+            _sessionValidator = sessionValidator;
 
             string? folder = configuration["GameSave:Folder"];
             string? fileName = configuration["GameSave:FileName"];
-
+            string? sessionFileName = configuration["GameSave:SessionFileName"];
             ArgumentException.ThrowIfNullOrWhiteSpace(folder);
             ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(sessionFileName);
 
-            _boardService = boardService;
-            _validator = validator;
-
-            SavePath = Path.GetFullPath(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                folder,
-                fileName));
+            string directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), folder);
+            SavePath = Path.GetFullPath(Path.Combine(directory, fileName));
+            SessionSavePath = Path.GetFullPath(Path.Combine(directory, sessionFileName));
+            if (string.Equals(SavePath, SessionSavePath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Single-game and session saves must use different file names.");
+            }
         }
 
         /// Summary:
-        /// Writes a complete snapshot to a temporary file before replacing the previous save.
-        public async Task SaveAsync(
-            GameState state,
-            CancellationToken cancellationToken = default)
+        /// Saves one game using the file format introduced in Iteration 2.
+        public async Task SaveAsync(GameState state, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(state);
             cancellationToken.ThrowIfCancellationRequested();
+            GameSaveData data = CreateSaveData(state, cancellationToken);
+            ValidateData(data, _validator);
+            await WriteAsync(SavePath, data, cancellationToken);
+        }
 
-            GameSaveData data = CreateSaveData(state);
-            ValidateSaveData(data);
+        /// Summary:
+        /// Restores and validates an Iteration 2 single-game save.
+        public async Task<GameState> LoadAsync(CancellationToken cancellationToken = default)
+        {
+            GameSaveData data = await ReadAsync(
+                SavePath, MaximumFileSizeBytes, _validator, cancellationToken);
+            return RestoreGame(data, cancellationToken);
+        }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(SavePath)!);
+        /// Summary:
+        /// Saves every game from the same completed session snapshot in one replacement file.
+        public async Task SaveAllAsync(GameSession session, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+            cancellationToken.ThrowIfCancellationRequested();
+            var games = new GameSaveData[session.Games.Count];
+            for (int index = 0; index < games.Length; index++)
+            {
+                games[index] = CreateSaveData(session.Games[index], cancellationToken);
+            }
 
-            string temporaryPath =
-                SavePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            var data = new SessionSaveData { Version = 1, Games = games };
+            ValidateData(data, _sessionValidator);
+            await WriteAsync(SessionSavePath, data, cancellationToken);
+        }
 
+        /// Summary:
+        /// Restores all boards, iteration counts, and game numbers from a validated session file.
+        public async Task<GameSession> LoadAllAsync(CancellationToken cancellationToken = default)
+        {
+            SessionSaveData data = await ReadAsync(
+                SessionSavePath, MaximumSessionFileSizeBytes, _sessionValidator, cancellationToken);
+            var games = new GameState[data.Games.Length];
+            for (int index = 0; index < games.Length; index++)
+            {
+                games[index] = RestoreGame(data.Games[index], cancellationToken);
+            }
+
+            return new GameSession(games);
+        }
+
+        /// Summary:
+        /// Reads a bounded JSON file and validates its complete contents before returning them.
+        private static async Task<T> ReadAsync<T>(string path, long maximumBytes,
+            IValidator<T> validator, CancellationToken cancellationToken) where T : class
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                await using (var stream = new FileStream(
-                    temporaryPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    4096,
-                    useAsync: true))
+                await using var stream = new FileStream(path, FileMode.Open,
+                    FileAccess.Read, FileShare.Read, 4096, useAsync: true);
+                if (stream.Length > maximumBytes)
                 {
-                    await JsonSerializer.SerializeAsync(
-                        stream, data, JsonOptions, cancellationToken);
+                    throw new InvalidDataException("The save file is too large.");
+                }
 
+                T? data = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken);
+                if (data is null)
+                {
+                    throw new InvalidDataException("The save file contains no game data.");
+                }
+
+                ValidateData(data, validator);
+                return data;
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException("The save file is not valid game JSON.", exception);
+            }
+        }
+
+        /// Summary:
+        /// Writes to a temporary file so a failed or cancelled save preserves the previous snapshot.
+        private static async Task WriteAsync<T>(string path, T data, CancellationToken cancellationToken)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            string temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096, useAsync: true))
+                {
+                    await JsonSerializer.SerializeAsync(stream, data, JsonOptions, cancellationToken);
                     await stream.FlushAsync(cancellationToken);
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                File.Move(temporaryPath, SavePath, overwrite: true);
+                File.Move(temporaryPath, path, overwrite: true);
             }
             finally
             {
@@ -84,70 +153,14 @@ namespace GameOfLife.Core.Service
         }
 
         /// Summary:
-        /// Reads, validates, and restores a game from the configured save file.
-        public async Task<GameState> LoadAsync(
-            CancellationToken cancellationToken = default)
+        /// Flattens a board into row-by-row cell values for JSON storage.
+        private GameSaveData CreateSaveData(GameState state, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await using var stream = new FileStream(
-                    SavePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    4096,
-                    useAsync: true);
-
-                if (stream.Length > MaximumFileSizeBytes)
-                {
-                    throw new InvalidDataException("The save file is too large.");
-                }
-
-                GameSaveData? data =
-                    await JsonSerializer.DeserializeAsync<GameSaveData>(
-                        stream, JsonOptions, cancellationToken);
-
-                if (data is null)
-                {
-                    throw new InvalidDataException(
-                        "The save file contains no game data.");
-                }
-
-                ValidateSaveData(data);
-
-                var board = new Board(data.Rows, data.Columns);
-
-                for (int row = 0; row < board.Rows; row++)
-                {
-                    for (int column = 0; column < board.Columns; column++)
-                    {
-                        _boardService.SetCell(
-                            board,
-                            row,
-                            column,
-                            data.Cells[row * board.Columns + column]);
-                    }
-                }
-
-                return new GameState(board, data.Iteration);
-            }
-            catch (JsonException exception)
-            {
-                throw new InvalidDataException(
-                    "The save file is not valid game JSON.",
-                    exception);
-            }
-        }
-
-        /// Summary:
-        /// Converts the two-dimensional board into a row-by-row array supported by JSON.
-        private GameSaveData CreateSaveData(GameState state)
-        {
             var cells = new bool[checked(state.Board.Rows * state.Board.Columns)];
             for (int row = 0; row < state.Board.Rows; row++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 for (int column = 0; column < state.Board.Columns; column++)
                 {
                     cells[row * state.Board.Columns + column] = _boardService.IsAlive(state.Board, row, column);
@@ -156,18 +169,34 @@ namespace GameOfLife.Core.Service
 
             return new GameSaveData
             {
-                Rows = state.Board.Rows,
-                Columns = state.Board.Columns,
-                Iteration = state.Iteration,
-                Cells = cells
+                Rows = state.Board.Rows, Columns = state.Board.Columns,
+                Iteration = state.Iteration, Cells = cells
             };
         }
 
         /// Summary:
-        /// Reports invalid save data as a readable file error before using it.
-        private void ValidateSaveData(GameSaveData data)
+        /// Rebuilds a board from already validated cell data.
+        private GameState RestoreGame(GameSaveData data, CancellationToken cancellationToken)
         {
-            var result = _validator.Validate(data);
+            cancellationToken.ThrowIfCancellationRequested();
+            var board = new Board(data.Rows, data.Columns);
+            for (int row = 0; row < board.Rows; row++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                for (int column = 0; column < board.Columns; column++)
+                {
+                    _boardService.SetCell(board, row, column, data.Cells[row * board.Columns + column]);
+                }
+            }
+
+            return new GameState(board, data.Iteration);
+        }
+
+        /// Summary:
+        /// Converts validation failures into file errors that the console can display.
+        private static void ValidateData<T>(T data, IValidator<T> validator)
+        {
+            var result = validator.Validate(data);
             if (!result.IsValid)
             {
                 throw new InvalidDataException(string.Join(" ", result.Errors.Select(error => error.ErrorMessage)));
@@ -175,7 +204,7 @@ namespace GameOfLife.Core.Service
         }
 
         /// Summary:
-        /// Removes an unfinished temporary save without hiding the original save error.
+        /// Attempts to remove unfinished output without hiding the original file error.
         private static void DeleteTemporaryFile(string path)
         {
             try
@@ -184,7 +213,7 @@ namespace GameOfLife.Core.Service
             }
             catch (IOException)
             {
-                // The incomplete temporary file is never used as a saved game.
+                // An incomplete temporary file is never used as a save.
             }
             catch (UnauthorizedAccessException)
             {

@@ -30,13 +30,15 @@ namespace GameOfLife.Tests
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["GameSave:Folder"] = Path.GetDirectoryName(_path),
-                    ["GameSave:FileName"] = Path.GetFileName(_path)
+                    ["GameSave:FileName"] = Path.GetFileName(_path),
+                    ["GameSave:SessionFileName"] = "games.json"
                 })
                 .Build();
 
             _fileService = new GameFileService(
                 _boardService,
                 new GameSaveDataValidator(new BoardRequestValidator()),
+                new SessionSaveDataValidator(new GameSaveDataValidator(new BoardRequestValidator())),
                 configuration);
         }
 

@@ -4,15 +4,21 @@ namespace GameOfLife.Core.Models
     {
         public Board Board { get; }
         public long Iteration { get; }
+        public bool IsStagnant { get; }
 
         /// Summary:
-        /// Groups the current board and iteration number, starting new games at zero.
-        public GameState(Board board, long iteration = 0)
+        /// Stores the board, iteration number, and whether living cells stopped changing.
+        public GameState(
+            Board board,
+            long iteration = 0,
+            bool isStagnant = false)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentOutOfRangeException.ThrowIfNegative(iteration);
+
             Board = board;
             Iteration = iteration;
+            IsStagnant = isStagnant;
         }
     }
 }
